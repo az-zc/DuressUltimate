@@ -5,6 +5,7 @@ on:
     branches: [ "main" ]
   pull_request:
     branches: [ "main" ]
+  workflow_dispatch:        # ← 加上这个才会有「Run workflow」按钮
 
 jobs:
   build:
@@ -24,10 +25,24 @@ jobs:
         run: chmod +x gradlew
 
       - name: Build Release APK
-        run: ./gradlew assembleRelease
+        run: ./gradlew assembleRelease --stacktrace
+
+      # ↓ 新增：自动生成 keystore 并签名，否则产物是 unsigned、手机装不上
+      - name: Sign APK
+        run: |
+          keytool -genkeypair -v -keystore release.keystore \
+            -storepass duress123 -keypass duress123 \
+            -alias duress -keyalg RSA -keysize 2048 -validity 10000 \
+            -dname "CN=Duress, OU=Dev, O=Duress, L=NA, ST=NA, C=CN"
+          APK=$(ls app/build/outputs/apk/release/*.apk | head -n 1)
+          BT=$(ls -d "$ANDROID_HOME"/build-tools/* | sort -V | tail -n 1)
+          "$BT/apksigner" sign --ks release.keystore \
+            --ks-pass pass:duress123 --key-pass pass:duress123 \
+            --out app/build/outputs/apk/release/app-release-signed.apk "$APK"
 
       - name: Upload APK artifact
         uses: actions/upload-artifact@v4
         with:
           name: app-release
-          path: app/build/outputs/apk/release/app-release-unsigned.apk
+          path: |
+            app/build/outputs/apk/release/*.apk
